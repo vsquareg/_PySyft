@@ -28,6 +28,7 @@ from ..node.common import client
 from ..node.common.action.common import Action
 from ..node.common.util import listify
 from ..pointer.pointer import Pointer
+from .plan_pointer import PlanPointer
 from ..store.storeable_object import StorableObject
 
 CAMEL_TO_SNAKE_PAT = re.compile(r"(?<!^)(?=[A-Z])")
@@ -46,8 +47,8 @@ class Plan(Serializable):
     def __init__(
         self,
         actions: Union[List[Action], None] = None,
-        inputs: Union[Dict[str, Pointer], None] = None,
-        outputs: Union[Pointer, List[Pointer], None] = None,
+        inputs: Union[Dict[str, PlanPointer], None] = None,
+        outputs: Union[PlanPointer, List[PlanPointer], None] = None,
         code: Optional[str] = None,
         max_calls: Optional[int] = None,
     ):
@@ -55,8 +56,8 @@ class Plan(Serializable):
         Initialize the Plan with actions, inputs and outputs
         """
         self.actions: List[Action] = listify(actions)
-        self.inputs: Dict[str, Pointer] = inputs if inputs is not None else dict()
-        self.outputs: List[Pointer] = listify(outputs)
+        self.inputs: Dict[str, PlanPointer] = inputs if inputs is not None else dict()
+        self.outputs: List[PlanPointer] = listify(outputs)
         self.code = code
         self.max_calls = max_calls
         self.n_calls = 0
@@ -234,9 +235,9 @@ class Plan(Serializable):
             inner_action = getattr(action_proto, action_proto.WhichOneof("action"))
             actions.append(action_cls._proto2object(inner_action))
 
-        inputs = {k: Pointer._proto2object(proto.inputs[k]) for k in proto.inputs}
+        inputs = {k: PlanPointer._proto2object(proto.inputs[k]) for k in proto.inputs}
         outputs = [
-            Pointer._proto2object(pointer_proto) for pointer_proto in proto.outputs
+            PlanPointer._proto2object(pointer_proto) for pointer_proto in proto.outputs
         ]
 
         return Plan(actions=actions, inputs=inputs, outputs=outputs)

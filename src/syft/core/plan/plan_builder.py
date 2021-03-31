@@ -12,6 +12,7 @@ from ...core.pointer.pointer import Pointer
 from ...logger import info
 from ...logger import traceback_and_raise
 from .plan import Plan
+from .plan import PlanPointer
 
 PLAN_BUILDER_VM: PlanVirtualMachine = PlanVirtualMachine(name="plan_vm")
 ROOT_CLIENT: Client = PLAN_BUILDER_VM.get_root_client()
@@ -35,8 +36,10 @@ def make_plan(func: Callable) -> Plan:
     vm = PLAN_BUILDER_VM
     code = inspect.getsource(func)
     vm.record_actions()
-    res = func(**inputs)
+    res = PlanPointer(func(**inputs))
     vm.stop_recording()
+    for k in inputs.keys():
+        inputs[k] = PlanPointer(inputs[k])
     plan = Plan(actions=vm.recorded_actions, inputs=inputs, outputs=res, code=code)
     # cleanup
     vm.recorded_actions = []
