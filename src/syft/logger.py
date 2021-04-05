@@ -22,13 +22,15 @@ def remove() -> None:
 
 def add(
     sink: Union[None, str, os.PathLike, TextIO, logging.Handler] = None,
+    format: str = LOG_FORMAT,
+    filter=None,
     level: str = "ERROR",
 ) -> None:
     sink = DEFAULT_SINK if sink is None else sink
     try:
         logger.add(
             sink=sink,
-            format=LOG_FORMAT,
+            format=format,
             enqueue=True,
             colorize=False,
             diagnose=True,
@@ -40,7 +42,8 @@ def add(
     except BaseException:
         logger.add(
             sink=sink,
-            format=LOG_FORMAT,
+            format=format,
+            filter=filter,
             colorize=False,
             diagnose=True,
             backtrace=True,
@@ -65,13 +68,14 @@ def create_log_and_print_function(level: str) -> Callable:
     def log_and_print(*args: Any, **kwargs: Any) -> None:
         try:
             method = getattr(logger.opt(lazy=True), level, None)
+            print_method = getattr(logger.opt(lazy=True), "CUSTOM_PRINT", None)
             if "print" in kwargs and kwargs["print"] is True:
                 del kwargs["print"]
-                print(*args, **kwargs)
+                # print(*args, **kwargs)
                 if "end" in kwargs:
                     # clean up extra end for printing
                     del kwargs["end"]
-
+                logger.log("CUSTOM_PRINT", *args, **kwargs)
             if method is not None:
                 method(*args, **kwargs)
             else:

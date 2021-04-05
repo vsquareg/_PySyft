@@ -7,7 +7,14 @@ from typing import Generator
 from typing import Optional
 
 # third party
+import logging
 import requests
+import ipywidgets as widgets
+from loguru import logger
+from traitlets import Unicode, Bool, CaselessStrEnum
+
+# syft absolute
+import syft as sy
 
 # syft relative
 from ...core.common.environment import is_jupyter
@@ -149,6 +156,33 @@ def begin_duet_logger(my_domain: Domain) -> None:
         counterThread().start()
 
 
+class OutputWidgetHandler(logging.Handler):
+    """ Custom logging handler sending logs to an output widget """
+
+    def __init__(self, overflow='scroll', *args, **kwargs):
+        super(OutputWidgetHandler, self).__init__(*args, **kwargs)
+        layout = {
+            'width': '100%',
+            'height': '160px',
+            'border': '1px solid black'
+        }
+        self.out = widgets.Output(layout=widgets.Layout(width='100%',
+                                                        height='160px',
+                                                        max_height='1000px',
+                                                        overflow=overflow,
+                                                        border='2px solid black'))
+
+    def emit(self, record):
+        """ Overload of logging.Handler method """
+        formatted_record = self.format(record)
+        new_output = {
+            'name': 'stdout',
+            'output_type': 'stream',
+            'text': formatted_record + '\n'
+        }
+        self.out.outputs = (new_output, ) + self.out.outputs
+
+
 def duet(
     target_id: Optional[str] = None,
     logging: bool = True,
@@ -156,14 +190,104 @@ def duet(
     loopback: bool = False,
     db_path: Optional[str] = None,
 ) -> Client:
-    if target_id is not None:
-        return join_duet(
-            target_id=target_id, loopback=loopback, network_url=network_url
+    if os.path.isfile(LOGO_URL) and is_jupyter:
+        display(
+            Image(
+                LOGO_URL,
+                width=200,
+                unconfined=True,
+            )
         )
-    else:
-        return launch_duet(
+
+    def launch_duet_callback(b):
+        logging = logging_checkbox.value
+        loopback = loopback_checkbox.value
+        network_url = network_url_input.value
+        launch_duet(
             logging=logging, network_url=network_url, loopback=loopback, db_path=db_path
         )
+
+    def join_duet_callback(b):
+        logging = logging_checkbox.value
+        loopback = loopback_checkbox.value
+        network_url = network_url_input.value
+        join_duet(
+            target_id=target_id, loopback=loopback, network_url=network_url
+        )
+
+    launch_button = widgets.Button(description="Lauch Duet")
+    join_button = widgets.Button(description="Join Duet")
+
+    logging_checkbox = widgets.Checkbox(value=False, description='Logging', disabled=False,
+                                        indent=False, layout=widgets.Layout(flex='1 1 auto', width='auto'))
+    loopback_checkbox = widgets.Checkbox(value=False, description='Loopback',
+                                         disabled=False, indent=False, layout=widgets.Layout(flex='1 1 auto', width='auto'))
+
+    network_url_input = widgets.Text(placeholder='Network URL', style={'description_width': 'initial'})
+
+    box_layout = widgets.Layout(display='flex',
+                                flex_flow='row',
+                                align_items='stretch',
+                                width='100%')
+
+    critical_handler = OutputWidgetHandler()
+    sy.logger.add(critical_handler, level="CRITICAL")
+
+    def filter_print(record):
+        if record['level'].name == "CUSTOM_PRINT":
+            return True
+        return False
+
+    logger.level("CUSTOM_PRINT", no=45, color="<blue>", icon="@")
+    print_handler = OutputWidgetHandler(overflow='hidden')
+    sy.logger.add(print_handler, level="CUSTOM_PRINT", format='{message}', filter=filter_print)
+
+    logging_accordion = widgets.Accordion(children=[critical_handler.out], titles=('Logs'))
+    logging_accordion.set_title(index=0, title='Logs')
+
+    print_accordion = widgets.Accordion(children=[print_handler.out], titles=('Info'))
+    print_accordion.set_title(index=0, title='Info')
+
+    hbox_checkbox = widgets.Box([logging_checkbox, loopback_checkbox], layout=box_layout)
+    hbox_buttons = widgets.HBox([launch_button, join_button], layout=widgets.Layout(
+                                flex_flow='row',
+                                align_items='stretch',
+                                width='100%'))
+
+    vbox_connect = widgets.VBox([hbox_checkbox, network_url_input, hbox_buttons])
+
+    remote_title = widgets.HTML("<h4>Remote Handlers</h4>", placeholder='Some HTML')
+
+    class ValidCustom(widgets.Valid):
+        readout = Unicode('').tag(sync=True)
+        _view_name = Unicode('ValidView').tag(sync=True)
+        _model_name = Unicode('ValidModel').tag(sync=True)
+
+    valid_widget1 = ValidCustom(value=True, description='[tag1, tag2]')
+    valid_widget2 = ValidCustom(value=False, description='[tag3]')
+
+    vbox_handler = widgets.VBox([remote_title, valid_widget1, valid_widget2])
+
+    connection_status = widgets.HTML("Connection Status", placeholder='Some HTML')
+
+    hbox_full = widgets.HBox([vbox_connect, connection_status, vbox_handler], layout=widgets.Layout(overflow='scroll hidden',
+                                                                                                    border='3px solid black',
+                                                                                                    width='100%',
+                                                                                                    height='',
+                                                                                                    justify_content='space-between'))
+
+    display(hbox_full, print_accordion, logging_accordion)
+    launch_button.on_click(launch_duet_callback)
+    join_button.on_click(join_duet_callback)
+
+    # if target_id is not None:
+    #     return join_duet(
+    #         target_id=target_id, loopback=loopback, network_url=network_url
+    #     )
+    # else:
+    #     return launch_duet(
+    #         logging=logging, network_url=network_url, loopback=loopback, db_path=db_path
+    #     )
 
 
 def launch_duet(
@@ -173,14 +297,6 @@ def launch_duet(
     credential_exchanger: DuetCredentialExchanger = OpenGridTokenManualInputExchanger(),
     db_path: Optional[str] = None,
 ) -> Client:
-    if os.path.isfile(LOGO_URL) and is_jupyter:
-        display(
-            Image(
-                LOGO_URL,
-                width=400,
-                unconfined=True,
-            )
-        )
     info("🎤  🎸  ♪♪♪ Starting Duet ♫♫♫  🎻  🎹\n", print=True)
     info(
         "♫♫♫ >\033[93m"
@@ -239,14 +355,6 @@ def join_duet(
     loopback: bool = False,
     credential_exchanger: DuetCredentialExchanger = OpenGridTokenManualInputExchanger(),
 ) -> WebRTCDuet:
-    if os.path.isfile(LOGO_URL) and is_jupyter:
-        display(
-            Image(
-                LOGO_URL,
-                width=400,
-                unconfined=True,
-            )
-        )
     info("🎤  🎸  ♪♪♪ Joining Duet ♫♫♫  🎻  🎹\n", print=True)
     info(
         "♫♫♫ >\033[93m"
